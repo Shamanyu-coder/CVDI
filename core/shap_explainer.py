@@ -2,24 +2,40 @@ import shap
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
+import sys
+
+# Streamlit tqdm hotfix
+if not hasattr(sys.stderr, 'flush'):
+    sys.stderr.flush = lambda: None
 
 def get_shap_values(model, df, patient_features):
     # We use the underlying SVC model
     # Since SVC with probability=True uses Platt scaling, we can use KernelExplainer
     # To keep it fast for the demo, we use a small background dataset
-    background = df.drop('target', axis=1).dropna().sample(n=50, random_state=42)
+    possible_targets = ['target', 'type', 'cardio']
+    possible_ids = ['record', 'id']
+    drop_cols = [col for col in possible_targets + possible_ids if col in df.columns]
+        
+    background = df.drop(drop_cols, axis=1).dropna().sample(n=50, random_state=42)
     
     # Define a prediction function that handles scaling
     def predict_fn(X):
-        return model.predict_proba(X)[:, 1]
+        probs = model.predict_proba(X)
+        if probs.shape[1] > 2:
+            # Multi-class scenario: return probability of predicted class or class 0
+            return probs[:, np.argmax(probs.mean(axis=0))]
+        return probs[:, 1]
         
     explainer = shap.KernelExplainer(predict_fn, background)
     
     # Calculate SHAP values for the single patient
-    shap_vals = explainer.shap_values(patient_features.values.reshape(1, -1))
+    shap_vals = explainer.shap_values(patient_features.values.reshape(1, -1), silent=True)
     
     # shap_values returns an array for KernelExplainer
-    return shap_vals[0], explainer.expected_value, background
+    vals = shap_vals[0] if isinstance(shap_vals, list) else shap_vals
+    vals = np.array(vals).ravel()
+    
+    return vals, explainer.expected_value, background
 
 def plot_shap_waterfall(shap_vals, expected_value, features):
     # Create a simple matplotlib bar chart for feature importances with clean light aesthetic
@@ -29,11 +45,18 @@ def plot_shap_waterfall(shap_vals, expected_value, features):
     fig.patch.set_facecolor('#ffffff')
     ax.set_facecolor('#ffffff')
     
-    feature_names = features.index.tolist()
+    feature_names = np.array(features.index.tolist())
     
+    # Force everything to exactly 1D array
+    shap_vals = np.array(shap_vals).ravel()
+    if shap_vals.ndim > 1:
+        shap_vals = shap_vals[0]
+        
     # Sort features by absolute SHAP value
     idx = np.argsort(np.abs(shap_vals))
-    sorted_features = [feature_names[i] for i in idx]
+    
+    # Numpy indexing directly instead of list comp
+    sorted_features = feature_names[idx].tolist()
     sorted_vals = shap_vals[idx]
     
     # Deep red for positive (risk), Deep blue for negative (protective)
@@ -59,6 +82,7 @@ def plot_shap_waterfall(shap_vals, expected_value, features):
 def generate_counterfactual(shap_vals, features, model):
     # Find the feature that increased the risk the most
     feature_names = features.index.tolist()
+    shap_vals = np.array(shap_vals).flatten()
     max_idx = np.argmax(shap_vals)
     top_feature = feature_names[max_idx]
     

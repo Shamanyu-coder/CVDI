@@ -13,7 +13,11 @@ def render():
         st.warning("Please select a dataset and patient in Panel 2.")
         return
         
-    df = st.session_state.current_data.drop('target', axis=1)
+    possible_targets = ['target', 'type', 'cardio']
+    possible_ids = ['record', 'id']
+    drop_cols = [col for col in possible_targets + possible_ids if col in st.session_state.current_data.columns]
+        
+    df = st.session_state.current_data.drop(drop_cols, axis=1)
     patient_record = df.iloc[st.session_state.selected_patient_index].copy()
     
     if st.button("Run Agentic Orchestrator", type="primary", icon="⚙️"):

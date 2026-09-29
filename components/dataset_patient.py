@@ -2,11 +2,24 @@ import streamlit as st
 import pandas as pd
 import os
 
+@st.cache_data
 def load_data(dataset_name):
-    # Determine file path based on dataset name
-    file_name = 'cleveland.csv' if 'Cleveland' in dataset_name else 'statlog.csv'
+    if 'Cleveland' in dataset_name:
+        file_name = 'cleveland.csv'
+    elif 'Statlog' in dataset_name:
+        file_name = 'statlog.csv'
+    elif 'Cardiovascular' in dataset_name:
+        file_name = 'cardio_train.csv'
+    else:
+        file_name = 'MIT-BIH Arrhythmia Database.csv'
+        
     file_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'data', file_name)
-    df = pd.read_csv(file_path)
+    if 'cardio_train' in file_name:
+        df = pd.read_csv(file_path, sep=';')
+        df = df.sample(n=1000, random_state=42).reset_index(drop=True)
+    else:
+        df = pd.read_csv(file_path)
+        
     return df
 
 def render():
@@ -16,7 +29,12 @@ def render():
     
     with col1:
         st.subheader("Dataset Selection")
-        dataset_options = ['Cleveland Heart Disease (303 rows)', 'Statlog Heart (270 rows)']
+        dataset_options = [
+            'MIT-BIH Arrhythmia ECG (100k+ rows) - High Accuracy', 
+            'Cardiovascular Disease Dataset (70k rows)', 
+            'Cleveland Heart Disease (303 rows)', 
+            'Statlog Heart (270 rows)'
+        ]
         selected_dataset = st.selectbox("Select Cohort Dataset", dataset_options)
         
         # Update session state if dataset changes
@@ -37,7 +55,7 @@ def render():
         
         patient_record = df.iloc[patient_idx].copy()
         
-        st.markdown("### 13-Feature Harmonized Schema")
+        st.markdown("### Patient Record Preview")
         
         # Display the record with missing value highlights
         record_df = pd.DataFrame(patient_record).T
